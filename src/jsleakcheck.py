@@ -28,6 +28,8 @@ import optparse
 import sys
 
 import leak_finder
+
+sys.path.append("../../pyautolib/")
 import remote_inspector_client
 import suppressions
 

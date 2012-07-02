@@ -49,7 +49,6 @@ going through these bad stop nodes, the object is not a leak.
 
 import simplejson
 
-import remote_inspector_client
 import stacktrace
 
 

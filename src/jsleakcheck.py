@@ -51,22 +51,29 @@ class LeakDefinition(object):
   """
 
   def __init__(self, description='', suppression_filename='', containers=None,
-               bad_nodes=None):
+               bad_nodes=None, stacktrace_prefix='', stacktrace_suffix=''):
     """Initializes the LeakDefinition.
 
     Args:
-        description: A human readable description of this LeakDefinition.
-        suppression_filename: Filename of the suppressions file to use for this
-            LeakDefinition.
-        containers: a set of arrays which contains potentially leaking
-            cells.
-        bad_nodes: a set of nodes that qualify a retaining path as
-            "unintentional" if it passes through one of these nodes.
+      description: str, a human readable description of this LeakDefinition.
+      suppression_filename: str, filename of the suppressions file to use for
+          this LeakDefinition.
+      containers: [str], a set of arrays which contains potentially leaking
+          objects.
+      bad_nodes: [str], a set of nodes that qualify a retaining path as
+          "unintentional" if it passes through one of these nodes.
+      stacktrace_prefix: str, prefix to add to the container name for
+          retrieving the stack trace. Useful e.g., if the JavaScript is in
+          different frame.
+      stacktrace_suffix: str, name of the member variable where the stack
+          trace is stored.
     """
     self.description = description
     self.suppressions = suppression_filename
     self.containers = containers or []
     self.bad_nodes = bad_nodes or []
+    self.stacktrace_prefix = stacktrace_prefix
+    self.stacktrace_suffix = stacktrace_suffix
 
 # Some default configurations for Closure based apps.
 CLOSURE_DISPOSABLE = LeakDefinition(
@@ -75,7 +82,9 @@ CLOSURE_DISPOSABLE = LeakDefinition(
      ' with uncompiled JavaScript.'),
     'closure-disposable-suppressions.txt',
     ['goog.Disposable.instances_'],
-    ['goog.events'])
+    ['goog.events'],
+    '',
+    'creationStack')
 
 CLOSURE_EVENT_LISTENERS = LeakDefinition(
     ('Detects leaking objects goog.events.Listener. Remember to set'
@@ -83,20 +92,13 @@ CLOSURE_EVENT_LISTENERS = LeakDefinition(
      ' with uncompiled JavaScript.'),
     'closure-event-listeners-suppressions.txt',
     ['goog.events.listeners_'],
-    ['goog.events'])
-
-CLOSURE_EVENTTARGET = LeakDefinition(
-    ('Detects leaking objects inheriting from goog.events.EventTarget. Remember'
-     ' to set goog.events.EventTarget.ENABLE_MONITORING to true, and run your'
-     ' application with uncompiled JavaScript.'),
-    'closure-disposable-suppressions.txt',
-    ['goog.events.EventTarget.instances_'],
-    ['goog.events'])
+    ['goog.events'],
+    '',
+    'creationStack')
 
 PREDEFINED_DEFINITIONS = {
     'closure-disposable': CLOSURE_DISPOSABLE,
-    'closure-event-listeners': CLOSURE_EVENT_LISTENERS,
-    'closure-event-target': CLOSURE_EVENTTARGET
+    'closure-event-listeners': CLOSURE_EVENT_LISTENERS
 }
 
 
@@ -107,8 +109,7 @@ class JSLeakCheck(object):
     """Initializes the JSLeakCheck object.
 
     Args:
-        leak_definition: A LeakDefinition object defining what kind of leaks
-            to check.
+      leak_definition: LeakDefinition, defines what kind of leaks to check.
     """
     self.leak_definition = leak_definition
     self._suppressions = []
@@ -128,20 +129,23 @@ class JSLeakCheck(object):
     """Runs all necessary steps to detect new leaks.
 
     Args:
-        inspector_client: A RemoteInspectorClient instance which is used to
-            retrieve the heap snapshot. If none is given, a new client is
-            created.
-
+      inspector_client: RemoteInspectorClient, used to retrieve the heap
+          snapshot. If none is given, a new client is created.
     Returns:
-        Returns the number of new leaks found.
-
+      int, the number of new leaks found.
     Raises:
-        leak_finder.Error: Something went wrong with taking or analyzing the
-                           heap snapshot.
+      leak_finder.Error: Something went wrong with taking or analyzing the
+          heap snapshot.
     """
 
-    client = (inspector_client or
-              remote_inspector_client.RemoteInspectorClient())
+    try:
+      client = (inspector_client or
+                remote_inspector_client.RemoteInspectorClient())
+    except RuntimeError as e:
+      raise leak_finder.Error(
+          'Cannot create RemoteInspectorClient; most probably you have '
+          'DevTools open on the tab we\'re trying to inspect. Original error '
+          'message: %s' % e.__str__())
 
     try:
       leaks = self._FindLeaks(client)
@@ -161,15 +165,13 @@ class JSLeakCheck(object):
     """Take a heap snapshot and run LeakFinder on it.
 
     Args:
-        inspector_client: A RemoteInspectorClient instance to retrieve the
-            heap snapshot from
-
+      inspector_client: RemoteInspectorClient, used to retrieve the heap
+        snapshot.
     Returns:
-        A list of found leaks.
-
+      [leak_finder.LeakNode], a list of found leaks.
     Raises:
         leak_finder.Error: Something went wrong with taking or analyzing the
-                           heap snapshot.
+            heap snapshot.
     """
     logging.info('Taking heap snapshot')
     try:
@@ -182,7 +184,9 @@ class JSLeakCheck(object):
     try:
       leaks = list(leak_finder.LeakFinder(
           self.leak_definition.containers,
-          self.leak_definition.bad_nodes).FindLeaks(nodes))
+          self.leak_definition.bad_nodes,
+          self.leak_definition.stacktrace_prefix,
+          self.leak_definition.stacktrace_suffix).FindLeaks(nodes))
     except leak_finder.Error as e:
       logging.error('Error analyzing snapshot: %s', str(e))
       raise
@@ -199,10 +203,9 @@ class JSLeakCheck(object):
     were used.
 
     Args:
-        leaks: A list of leak_finder.LeakNode objects.
-
+      leaks: [leak_finder.LeakNode], a list of found leaks.
     Returns:
-        A list of new leaks found.
+      [leak_finder.LeakNode], leaks which don't match any suppression.
     """
     matched_suppressions = {}
     new_leaks = []
@@ -279,6 +282,12 @@ def main():
                    help=('Name of a JavaScript object that qualifies a '
                          'retaining path as unintentional if it passes '
                          'through this object'))
+  group.add_option('-p', '--prefix', metavar='PREFIX',
+                   help=('String to prepend to the containers '
+                         '(e.g., the frame containing the scripts)'))
+  group.add_option('-u', '--suffix', metavar='SUFFIX',
+                   help=('Name of the member variable where the stack trace of '
+                         'a potentially leaked object is stored'))
   parser.add_option_group(group)
 
   parser.add_option('-v', '--verbose', action='store_true', default=False,
@@ -307,6 +316,12 @@ def main():
     leak_definition.bad_nodes = options.bad_nodes
     logging.info('Unintential leaks are retained only by %s',
                  ', '.join(options.bad_nodes))
+
+  if options.prefix:
+    leak_definition.stacktrace_prefix = options.prefix
+
+  if options.suffix:
+    leak_definition.stacktrace_suffix = options.suffix
 
   if not leak_definition.containers:
     logging.error('Need to specify at least either -d or -c')

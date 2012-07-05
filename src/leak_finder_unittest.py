@@ -165,7 +165,7 @@ class LeakFinderTest(unittest.TestCase):
         leak_finder.LeakFinder._IsRetainedByEdges(n3, ['foo', 'second']))
 
   def testFindRetainingPathsBranch(self):
-    lf = leak_finder.LeakFinder([], [])
+    lf = leak_finder.LeakFinder([], [], '', '')
     [n1, n2, n3, n4] = self._DataBranch()
 
     paths = self._GetLists(lf._FindRetainingPaths(n3, [n3], set()))
@@ -181,14 +181,14 @@ class LeakFinderTest(unittest.TestCase):
     self.assertNotEqual(paths[0][2], paths[1][2])
 
   def testFindRetainingPathsLoop(self):
-    lf = leak_finder.LeakFinder([], [])
+    lf = leak_finder.LeakFinder([], [], '', '')
     [_, _, n3] = self._DataLoop()
 
     paths = self._GetLists(lf._FindRetainingPaths(n3, [n3], set()))
     self.assertEqual(0, len(paths))
 
   def testFindRetainingPathsLoopAndBranch(self):
-    lf = leak_finder.LeakFinder([], [])
+    lf = leak_finder.LeakFinder([], [], '', '')
     [_, n2, n3, n4] = self._DataLoopAndBranch()
 
     paths = self._GetLists(lf._FindRetainingPaths(n3, [n3], set()))
@@ -203,7 +203,7 @@ class LeakFinderTest(unittest.TestCase):
     nodes = set()
     for n in nodelist:
       nodes.add(n)
-    lf = leak_finder.LeakFinder(['container'], ['bad'])
+    lf = leak_finder.LeakFinder(['container'], ['bad'], '', '')
     leaks = self._GetObjects(lf.FindLeaks(nodes))
     self.assertEqual(2, len(leaks))
     self.assertTrue(leaks[0].node == n3 or leaks[1].node == n3)

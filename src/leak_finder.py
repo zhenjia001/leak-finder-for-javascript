@@ -150,24 +150,27 @@ class LeakNode(object):
   Attributes:
     node: Node, represents the leaked JavaScript object.
     description: str, human-readable desription of the leak.
-    how_to_find_node: str: JavaScript expression which evaluates to the
+    how_to_find_node: str, JavaScript expression which evaluates to the
         leaked JavaScript object.
     stack: Stack, the creation stack trace of the JavaScript object, or None if
         the stack trace cannot be retrieved or has not yet been retrieved.
   """
 
-  def __init__(self, node, description, how_to_find_node):
+  def __init__(self, node, description, how_to_find_node, stacktrace_suffix):
     """Initializes the LeakNode object.
 
     Args:
       node: Node, represents the leaked JavaScript object.
       description: str, human-readable desription of the leak.
-      how_to_find_node: str: JavaScript expression which evaluates to the
+      how_to_find_node: str, JavaScript expression which evaluates to the
           leaked JavaScript object.
+      stacktrace_suffix: str, Name of the member variable where the stack trace
+          is stored.
     """
     self.node = node
     self.description = description
     self.how_to_find_node = how_to_find_node
+    self._stacktrace_suffix = stacktrace_suffix
     self.stack = None
 
   def RetrieveStackTrace(self, inspector_client=None):
@@ -179,17 +182,22 @@ class LeakNode(object):
           from the snapshot.
     """
     stack = None
+    if not self._stacktrace_suffix:
+      # No stack trace information.
+      self.stack = stacktrace.Stack('')
+      return
+
     if inspector_client:
       # The heap snapshot contains only the first 1000 characters of each
       # string.  As we store the creation stack trace in objects as strings, we
       # will need to evaluate this string using the remote inspector client to
       # get the full stack trace.
       stack = inspector_client.EvaluateJavaScript(
-          self.how_to_find_node + '.creationStack')
+          self.how_to_find_node + '.' + self._stacktrace_suffix)
     else:
       # See if the object contains a stack trace.
       for edge in self.node.edges_from:
-        if edge.name_string == 'creationStack':
+        if edge.name_string == self._stacktrace_suffix:
           stack = edge.to_node.string
           break
     if stack:
@@ -486,7 +494,8 @@ class Snapshotter(object):
 class LeakFinder(object):
   """Finds potentially leaking JavaScript objects based on a heap snapshot."""
 
-  def __init__(self, containers, bad_stop_nodes):
+  def __init__(self, containers, bad_stop_nodes, stacktrace_prefix,
+               stacktrace_suffix):
     """Initializes the LeakFinder object.
 
     Potentially leaking Node objects the are children of the nodes described by
@@ -501,9 +510,15 @@ class LeakFinder(object):
           A retaining path is bad if it goes through one of the bad nodes. If
           all the retaining paths of an object are bad, the object is considered
           a leak.
+      stacktrace_prefix: str, prefix to add to the container name for retrieving
+          the stack trace. Useful e.g., if the JavaScript is in different frame.
+      stacktrace_suffix: str, name of the member variable where the stack trace
+          is stored.
     """
     self._container_description = [c.split('.') for c in containers]
     self._bad_stop_node_description = [b.split('.') for b in bad_stop_nodes]
+    self._stacktrace_prefix = stacktrace_prefix
+    self._stacktrace_suffix = stacktrace_suffix
 
   def FindLeaks(self, nodes):
     """Finds Node objects which are potentially leaking.
@@ -579,9 +594,11 @@ class LeakFinder(object):
               stop_nodes.add(node)
             break
         if not found_good_path:
-          node_description = '%s[%s]' % (container.container_name,
-                                         edge.name_string)
-          leak = LeakNode(edge.to_node, 'Leak', node_description)
+          node_description = '%s%s[%s]' % (self._stacktrace_prefix,
+                                           container.container_name,
+                                           edge.name_string)
+          leak = LeakNode(edge.to_node, 'Leak', node_description,
+                          self._stacktrace_suffix)
           yield leak
 
   @staticmethod

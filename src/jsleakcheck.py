@@ -65,8 +65,8 @@ class LeakDefinition(object):
       stacktrace_prefix: str, prefix to add to the container name for
           retrieving the stack trace. Useful e.g., if the JavaScript is in
           different frame.
-      stacktrace_suffix: str, name of the member variable where the stack
-          trace is stored.
+      stacktrace_suffix: str, appended to the leaked objects for referring the
+          member variable where the stack trace is stored. E.g., ".stack".
     """
     self.description = description
     self.suppressions = suppression_filename
@@ -84,7 +84,7 @@ CLOSURE_DISPOSABLE = LeakDefinition(
     ['goog.Disposable.instances_'],
     ['goog.events'],
     '',
-    'creationStack')
+    '.creationStack')
 
 CLOSURE_EVENT_LISTENERS = LeakDefinition(
     ('Detects leaking objects goog.events.Listener. Remember to set'
@@ -94,7 +94,7 @@ CLOSURE_EVENT_LISTENERS = LeakDefinition(
     ['goog.events.listeners_'],
     ['goog.events'],
     '',
-    'creationStack')
+    '.creationStack')
 
 PREDEFINED_DEFINITIONS = {
     'closure-disposable': CLOSURE_DISPOSABLE,
@@ -253,7 +253,7 @@ class JSLeakCheck(object):
     if new_leaks:
       print 'New memory leaks found:'
       for leak in new_leaks:
-        print ' %d %s' % (leak['count'], leak['leak'].node.class_name)
+        print 'Leak: %d %s' % (leak['count'], leak['leak'].node.class_name)
         print 'allocated at:'
         print '  ' + '\n  '.join(leak['leak'].stack.frames)
 
@@ -284,10 +284,11 @@ def main():
                          'through this object'))
   group.add_option('-p', '--prefix', metavar='PREFIX',
                    help=('String to prepend to the containers '
-                         '(e.g., the frame containing the scripts)'))
+                         '(e.g., "jsframe.")'))
   group.add_option('-u', '--suffix', metavar='SUFFIX',
-                   help=('Name of the member variable where the stack trace of '
-                         'a potentially leaked object is stored'))
+                   help=('String to append to the leaked objects to access the '
+                         'member variable where the stack trace is stored '
+                         '(e.g. ".stack")'))
   parser.add_option_group(group)
 
   parser.add_option('-v', '--verbose', action='store_true', default=False,

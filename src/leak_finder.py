@@ -164,8 +164,8 @@ class LeakNode(object):
       description: str, human-readable desription of the leak.
       how_to_find_node: str, JavaScript expression which evaluates to the
           leaked JavaScript object.
-      stacktrace_suffix: str, Name of the member variable where the stack trace
-          is stored.
+      stacktrace_suffix: str, appended to the leaked objects for referring the
+          member variable where the stack trace is stored. E.g., ".stack".
     """
     self.node = node
     self.description = description
@@ -193,7 +193,7 @@ class LeakNode(object):
       # will need to evaluate this string using the remote inspector client to
       # get the full stack trace.
       stack = inspector_client.EvaluateJavaScript(
-          self.how_to_find_node + '.' + self._stacktrace_suffix)
+          self.how_to_find_node + self._stacktrace_suffix)
     else:
       # See if the object contains a stack trace.
       for edge in self.node.edges_from:

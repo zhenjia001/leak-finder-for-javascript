@@ -1,0 +1,25 @@
+<script src="http://closure-library.googlecode.com/svn/trunk/closure/goog/base.js"></script>
+<script>
+goog.require('goog.Disposable');
+</script>
+<script>
+goog.Disposable.ENABLE_MONITORING = true
+
+MyObj = function() {
+  goog.base(this);
+}
+goog.inherits(MyObj, goog.Disposable);
+
+MyObjCreator = function() {}
+MyObjCreator.prototype.Create = function() {
+  return new MyObj();
+}
+var creator = new MyObjCreator();
+
+// Not a leak.
+var handle = creator.Create();
+
+// Leak.
+var handle2 = creator.Create();
+handle2 = null;
+</script>

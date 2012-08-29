@@ -3,7 +3,7 @@
 goog.require('goog.Disposable');
 </script>
 <script>
-goog.Disposable.ENABLE_MONITORING = true
+goog.Disposable.MONITORING_MODE = goog.Disposable.MonitoringMode.INTERACTIVE;
 
 MyObj = function() {
   goog.base(this);

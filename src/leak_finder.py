@@ -68,6 +68,7 @@ class Node(object):
     edges_from: [Edge], edges whose start point this Node is.
     string: str, for string Nodes, contains the string the Node represents.
         Empty string for non-string nodes.
+    js_name: str, how to refer to this node in JavaScript.
   """
 
   def __init__(self, node_id, type_string, class_name):
@@ -85,6 +86,7 @@ class Node(object):
     self.edges_to = []
     self.edges_from = []
     self.string = ''
+    self.js_name = ''
 
   def AddEdgeTo(self, edge):
     """Associates an Edge with the Node (the end point).
@@ -101,6 +103,15 @@ class Node(object):
       edge: Edge, an edge whose start point this Node is.
     """
     self.edges_from.append(edge)
+
+  def __str__(self):
+    prefix = 'Node(' + str(self.node_id) + ' '
+    if self.type_string == 'object':
+      return prefix + self.class_name + ')'
+    return prefix + self.type_string + ')'
+
+  def ToJavaScript(self):
+    return self.js_name or str(self)
 
 
 class Edge(object):
@@ -142,6 +153,16 @@ class Edge(object):
   def SetToNode(self, node):
     self.to_node = node
     return self
+
+  def __str__(self):
+    return 'Edge(' + self.type_string + ' ' + self.name_string + ')'
+
+  def ToJavaScript(self):
+    if self.type_string == 'property':
+      return '.' + self.name_string
+    if self.type_string == 'element':
+      return '[' + self.name_string + ']'
+    return str(self)
 
 
 class LeakNode(object):
@@ -549,11 +570,13 @@ class LeakFinder(object):
       # path is good, and the object is not a leak.
       if node.class_name == 'Window' or node.class_name.startswith('Window / '):
         stop_nodes.add(node)
+        node.js_name = 'window'
         continue
       for edges in self._bad_stop_node_description:
         if LeakFinder._IsRetainedByEdges(node, edges):
           stop_nodes.add(node)
           bad_stop_nodes.add(node)
+          node.js_name = '.'.join(edges)
           break
       for edges in self._container_description:
         if LeakFinder._IsRetainedByEdges(node, edges):
@@ -562,6 +585,7 @@ class LeakFinder(object):
           bad_stop_nodes.add(node)
           node.container_name = '.'.join(edges)
           found_container_edges.add(node.container_name)
+          node.js_name = '.'.join(edges)
           break
 
     # Check that we found all the containers.
@@ -623,6 +647,40 @@ class LeakFinder(object):
           LeakFinder._IsRetainedByEdges(edge.from_node, edge_names[:-1])):
         return True
     return False
+
+  @staticmethod
+  def _RetainingPathToString(path):
+    """Constructs out a textual representation of the path.
+
+    Args:
+      path: [Node]
+    Returns:
+      str, representation of the path.
+    """
+    parent_node = None
+    result = ''
+    for node in path[::-1]:
+      if parent_node:
+        result += LeakFinder._NodeRelationshipToString(parent_node, node)
+      else:
+        result += node.ToJavaScript()
+      parent_node = node
+    return result
+
+  @staticmethod
+  def _NodeRelationshipToString(node_from, node_to):
+    """Constructs a textual representation of a relationship between two nodes.
+
+    Args:
+      node_from: Node
+      node_to: Node
+    Returns:
+      str, representation of the relationship.
+    """
+    for edge in node_to.edges_to:
+      if edge.from_node_id == node_from.node_id:
+        return edge.ToJavaScript()
+    return ''
 
   @staticmethod
   def _FindRetainingPaths(node, visited, stop_nodes, max_depth=30):

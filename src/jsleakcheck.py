@@ -337,8 +337,10 @@ def main():
       show_socket_messages=options.remote_inspector_client_debug)
 
   leak_checker = JSLeakCheck(leak_definition)
-  result = leak_checker.Run(inspector_client)
-  inspector_client.Stop()
+  try:
+    result = leak_checker.Run(inspector_client)
+  finally:
+    inspector_client.Stop()
   return result
 
 if __name__ == '__main__':

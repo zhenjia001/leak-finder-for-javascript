@@ -39,7 +39,7 @@ class LeakFinderTest(unittest.TestCase):
   def _CreatePropertyEdge(self, n1, n2, name):
     """Helper for creating test data."""
 
-    edge = leak_finder.Edge(0, 0, 'property', name)
+    edge = leak_finder.Edge(n1.node_id, n2.node_id, 'property', name)
     edge.SetFromNode(n1).SetToNode(n2)
     n1.AddEdgeFrom(edge)
     n2.AddEdgeTo(edge)
@@ -47,7 +47,7 @@ class LeakFinderTest(unittest.TestCase):
   def _CreateElementEdge(self, n1, n2, name):
     """Helper for creating test data."""
 
-    edge = leak_finder.Edge(0, 0, 'element', name)
+    edge = leak_finder.Edge(n1.node_id, n2.node_id, 'element', name)
     edge.SetFromNode(n1).SetToNode(n2)
     n1.AddEdgeFrom(edge)
     n2.AddEdgeTo(edge)
@@ -307,6 +307,20 @@ class LeakFinderTest(unittest.TestCase):
     self.assertEqual('node1', nodes[to_ix].edges_to[0].from_node.class_name)
     self.assertEqual('node2', nodes[to_ix].edges_to[0].to_node.class_name)
     self.assertEqual('edge1', nodes[to_ix].edges_to[0].name_string)
+
+  def testRetainingPathToString(self):
+    n1 = leak_finder.Node(1, 'object', 'Object')
+    n2 = leak_finder.Node(2, 'object', 'Object')
+    n3 = leak_finder.Node(3, 'object', 'Object')
+    self._CreatePropertyEdge(n1, n2, 'first')
+    self._CreateElementEdge(n2, n3, '5')
+
+    path = leak_finder.LeakFinder._RetainingPathToString([n3, n2, n1])
+    self.assertEqual('Node(1 Object).first[5]', path)
+
+    n1.js_name = 'window.node'
+    path = leak_finder.LeakFinder._RetainingPathToString([n3, n2, n1])
+    self.assertEqual('window.node.first[5]', path)
 
 
 if __name__ == '__main__':

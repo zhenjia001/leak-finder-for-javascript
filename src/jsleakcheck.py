@@ -25,6 +25,7 @@ flags:
 
 import logging
 import optparse
+import re
 import sys
 
 import leak_finder
@@ -78,7 +79,8 @@ class LeakDefinition(object):
 # Some default configurations for Closure based apps.
 CLOSURE_DISPOSABLE = LeakDefinition(
     ('Detects leaking objects inheriting from goog.Disposable. Remember to set'
-     ' goog.Disposable.ENABLE_MONITORING to true, and run your application'
+     ' goog.Disposable.MONITORING_MODE to'
+     ' goog.Disposable.MonitoringMode.INTERACTIVE, and run your application'
      ' with uncompiled JavaScript.'),
     'closure-disposable-suppressions.txt',
     ['goog.Disposable.instances_'],
@@ -291,6 +293,16 @@ def main():
                          '(e.g. ".stack")'))
   parser.add_option_group(group)
 
+  group = optparse.OptionGroup(parser, 'Specify the tab to debug')
+  group.add_option('-t', '--tab_index', type='int', default=0,
+                   help='Index of the tab to analyze')
+  group.add_option('-T', '--tab_pattern', type='string', default=None,
+                   help='Pattern of the tab to analyze')
+  group.add_option('-F', '--tab_field', type='string', default='title',
+                   help=('Field of the inspect objects to compare against the '
+                         'tab_pattern'))
+  parser.add_option_group(group)
+
   parser.add_option('-v', '--verbose', action='store_true', default=False,
                     dest='verbose', help='more verbose output')
 
@@ -333,7 +345,13 @@ def main():
     logging.error('Need to specify at least either -d or -c')
     return 1
 
+  tab_filter = None
+  if options.tab_pattern:
+    pat = re.compile(options.tab_pattern)
+    tab_filter = lambda o: pat.search(o[options.tab_field])
+
   inspector_client = remote_inspector_client.RemoteInspectorClient(
+      tab_index=options.tab_index, tab_filter=tab_filter,
       show_socket_messages=options.remote_inspector_client_debug)
 
   leak_checker = JSLeakCheck(leak_definition)

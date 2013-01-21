@@ -25,6 +25,7 @@ flags:
 
 import logging
 import optparse
+import os
 import re
 import sys
 
@@ -121,7 +122,8 @@ class JSLeakCheck(object):
                  self.leak_definition.suppressions)
     try:
       self._suppressions = suppressions.ReadSuppressionsFromFile(
-          self.leak_definition.suppressions)
+          os.path.join(os.path.dirname(__file__),
+                       self.leak_definition.suppressions))
     except suppressions.Error as e:
       logging.error('Could not load suppressions: %s', str(e))
     except IOError as e:
